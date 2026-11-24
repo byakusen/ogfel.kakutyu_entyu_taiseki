@@ -389,6 +389,15 @@
   .zk-note{margin-top:auto;background:#f6f2ff;border-radius:14px;padding:10px 14px;font-weight:700;color:var(--ink-soft);
     font-size:clamp(11px,1.2vw,15px);line-height:1.6;}
 
+  /* ============ 8-4. 導入（スライド） ============ */
+  .dn-nav{display:flex;gap:12px;justify-content:center;align-items:center;margin-top:var(--vgap);}
+  .dn-nav button{flex:0 1 auto;min-width:130px;background:var(--teal);color:#fff;border:3px solid var(--teal-d);
+    box-shadow:0 4px 0 var(--teal-d);border-radius:14px;font-size:clamp(14px,1.9vw,19px);padding:6px 18px;}
+  .dn-nav button:disabled{opacity:.35;pointer-events:none;}
+  .dn-nav span{min-width:4.6em;text-align:center;font-weight:900;color:var(--ink-soft);font-size:clamp(14px,1.8vw,19px);}
+  body.dn-on #next{display:none;}
+  body.dn-on #chal-mount, body.dn-on .score{visibility:hidden;}
+
   /* ============ 9. 2カラム（ひろい画面） ============ */
   .main{display:flex;gap:12px;flex:1 1 auto;min-height:0;width:100%;}
   .col-l{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;}
@@ -856,7 +865,7 @@ const APP = {
 
 /* 親タブの ならび。modes は 1グループ 4つまで。 */
 const GROUPS = [
-  { id:'g1', icon:'🧊', label:'しくみ',   modes:['dan','koshiki'] },
+  { id:'g1', icon:'🧊', label:'しくみ',   modes:['dounyu','dan','koshiki'] },
   { id:'g2', icon:'📐', label:'角柱',     modes:['shikaku','sankaku','daikei'] },
   { id:'g3', icon:'🥫', label:'円柱',     modes:['enchu','hanen'] },
   { id:'g4', icon:'🧩', label:'いろいろ', modes:['lji','oyoso'] },
@@ -1040,7 +1049,7 @@ function dashIn(G, q1, q2, k){ drawLine(G.pr(G.S.at(q1,k)), G.pr(G.S.at(q2,k)), 
 /* 立てた 円柱の 位置（かかずに 計算だけ。タップの まるつけにも つかう） */
 function cylGeo(rg, r, h, o){
   o = o || {};
-  const half=!!o.half, k=half?0.55:0.30;   // 円を 半分に した 形は 底面を ふくらませて 見やすく
+  const half=!!o.half, k=o.k||(half?0.55:0.30);   // 円を 半分に した 形は 底面を ふくらませて 見やすく
   const f = fitTo([{x:-r,y:-h-r*k},{x:r,y:half?0:r*k}], rg, o.pad===undefined?48:o.pad);
   const s=f.s, cb=f.tf({x:0,y:0}), ct=f.tf({x:0,y:-h}), rx=r*s, ry=r*k*s;
   return { ct:ct, cb:cb, rx:rx, ry:ry, s:s, c:{x:cb.x,y:(ct.y+cb.y)/2} };
@@ -1184,9 +1193,9 @@ function prismHitEdge(g, p){
 /* ---- 底面を 見つけたら：タップした 底面が もう1つの 底面まで 平行移動して もどってくる ----
    data.ba＝{ t0:始めた 時こく, from:タップした 底面（0／1）}。行く 45%・止まる 10%・もどる 45%
    むこうに 着いたら むこうの 底面に、もどったら タップした 底面に 色が つく */
-const BASE_MS=2200;
-function baseAnimP(){ const b=data.ba; return b ? Math.min(1, (Date.now()-b.t0)/BASE_MS) : 1; }
-function baseAnimOn(){ return !!data.ba && baseAnimP() < 1; }
+const BASE_MS=2200, BASE_HOLD=500;   // BASE_HOLD＝動き出す 前に 底面に とどまる 時間
+function baseAnimP(){ const b=data.ba; return b ? Math.min(1, Math.max(0, Date.now()-b.t0-BASE_HOLD)/BASE_MS) : 1; }
+function baseAnimOn(){ return !!data.ba && (Date.now()-data.ba.t0) < BASE_HOLD+BASE_MS; }
 function baseSlideS(){
   const p=baseAnimP(), e=t=> t<0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
   return p<0.45 ? e(p/0.45) : p<0.55 ? 1 : e(1-(p-0.55)/0.45);
@@ -1304,11 +1313,13 @@ function hintFade(){
 }
 /* ---- 体積の 式の ヒント（③）：底面が 高さの ぶん すぅーっと 動いて 立体が できる ----
    data.sw＝0〜1 動く／1〜SW_SHOW そのまま／SW_SHOW〜SW_END うすく なって 消える（その あと 底面積の 文字） */
-const SW_MS=1600, SW_SHOW=1.15, SW_END=1.5;
+const SW_MS=1600, SW_SHOW=1.15, SW_END=1.5, SW_HOLD=500;
 const SW_VEIL='rgba(255,255,255,.72)', SW_FILL='rgba(232,93,59,.22)', SW_CAP='rgba(232,93,59,.55)';
 function sweepP(){
   const d=data, now=Date.now(), dt=Math.min(100, now-(d.swLast||now)); d.swLast=now;
-  d.sw = (phase==='volX' && hintOn) ? Math.min(SW_END, (d.sw||0) + dt/SW_MS) : 0;   // ヒントを とじたら すぐ 0
+  const on=(phase==='volX' && hintOn);
+  d.swH = on ? (d.swH||0) + dt : 0;                                   // 動き出す 前に 0.5秒 底面に とどまる
+  d.sw = !on ? 0 : d.swH < SW_HOLD ? 1e-4 : Math.min(SW_END, (d.sw||0) + dt/SW_MS);   // ヒントを とじたら すぐ 0
   return d.sw;
 }
 function sweepAt(u){
@@ -1656,7 +1667,618 @@ function zukanRender(){
   document.getElementById('zkEx').innerHTML = z.ex;
 }
 
+/* ---- 導入（スライドで 見せる。問題では ない）----
+   DN_SLIDES の 1まいずつ：sec＝ステップの 番号、head＝図の 上の 見出し、prompt＝右の 文、guide＝下の 声かけ、
+   draw(t)＝図（t＝その スライドを 出してからの 秒。アニメーションに つかう） */
+let dnIdx = 0;                                   // いま 見て いる スライド（タブを かえても おぼえておく）
+const DN_SEC   = ['5年の ふりかえり','底面積 × 高さ','底面と 高さ'];
+const DN_TAN   = { side:'rgba(255,214,140,.42)', cap:'rgba(255,214,140,.42)', line:'#8a6420' };
+const DN_FAINT = { side:'rgba(255,226,170,.16)', cap:'rgba(255,226,170,.16)', line:'#c9b48a' };
+const DN_GREEN = 'rgba(110,196,80,.58)', DN_ORANGE = 'rgba(240,150,70,.58)';
+const DN_BASE  = { side:'rgba(255,214,140,.42)', cap:DN_GREEN, line:'#8a6420' };
+const DN_G5 = '#2f9a4e', DN_G6 = '#7b5cd6';      // 見出しの 色（5年生・6年生）
+function dnClamp(x){ return x<0 ? 0 : x>1 ? 1 : x; }
+function dnEase(x){ x=dnClamp(x); return x<.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2; }
+function dnIn(t, a, d){ return dnClamp((t-a)/(d||0.5)); }
+function dnFont(fs){ return '900 '+fs+'px "Yusei Magic",sans-serif'; }
+function dnRR(x, y, w, h, r){
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+/* 名札（縦・横・高さ・体積・底面積）。tail＝1 下に しっぽ／-1 上に しっぽ */
+const DN_TAG = { tate:['#f8cdd8','#b0365a'], yoko:['#cfe6f7','#2a6fa8'], taka:['#d3efdc','#2f7a4a'],
+                 tai:['#fbe7b5','#93650a'], tei:['#ddd5f5','#5a46a0'] };
+function dnTag(cx, y, txt, kind, fs, tail){
+  const c=DN_TAG[kind];
+  ctx.font=dnFont(fs);
+  const w=ctx.measureText(txt).width+fs*0.9, h=fs*1.45;
+  if(tail){
+    const sy=y+tail*h/2;
+    ctx.beginPath(); ctx.moveTo(cx-fs*0.3, sy); ctx.lineTo(cx, sy+tail*fs*0.45); ctx.lineTo(cx+fs*0.3, sy); ctx.closePath();
+    ctx.fillStyle=c[0]; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=c[1]; ctx.stroke();
+  }
+  dnRR(cx-w/2, y-h/2, w, h, h*0.42); ctx.fillStyle=c[0]; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=c[1]; ctx.stroke();
+  drawText(cx, y, txt, { size:fs, color:c[1], halo:false });
+}
+/* 文字を よこに ならべる。toks＝[{t, s(大きさの 倍), a(こさ), c(色)}]。かえり値＝それぞれの まん中の x と はば */
+function dnRow(cx, y, toks, fs, gk){
+  const gap=fs*(gk||0.32), ws=toks.map(k=>{ ctx.font=dnFont(fs*(k.s||1)); return ctx.measureText(k.t).width; });
+  let x=cx-(ws.reduce((a,b)=>a+b,0)+gap*(toks.length-1))/2;
+  const out=[];
+  toks.forEach((k,i)=>{
+    out.push({ x:x+ws[i]/2, w:ws[i] });
+    if((k.a===undefined ? 1 : k.a) > 0){
+      ctx.globalAlpha=(k.a===undefined ? 1 : k.a);
+      drawText(x+ws[i]/2, y, k.t, { size:fs*(k.s||1), color:k.c||C.ink });
+      ctx.globalAlpha=1;
+    }
+    x+=ws[i]+gap;
+  });
+  return out;
+}
+/* 角柱を かく（ばいりつ pr を 外から もらう）。o.fill(i,F)＝その 面の 色（なければ ふつう） */
+function dnDraw(S, pr, o){
+  o=o||{};
+  const col=o.col||DN_TAN, lw=o.lw||3;
+  const ff=(i,F)=> (o.fill && o.fill(i,F)) || null;
+  S.faces.forEach((F,i)=>{ const f=ff(i,F); if(!F.vis && f) drawPoly(F.pts.map(pr), { fill:f, stroke:null }); });
+  if(!o.noHidden) S.edges.forEach(e=>{ if(!e.vis) drawLine(pr(e.a), pr(e.b), { color:col.line, lw:2, dash:[6,6] }); });
+  S.faces.forEach((F,i)=>{ if(F.vis) drawPoly(F.pts.map(pr), { fill:ff(i,F)||(F.cap?col.cap:col.side), stroke:null }); });
+  S.edges.forEach(e=>{ if(e.vis) drawLine(pr(e.a), pr(e.b), { color:col.line, lw:lw }); });
+}
+/* 1cm の 立方体（見える 3つの 面） */
+const DN_PINK = ['#ffc9d6','#ffe1e9','#f2a6bb','#c4587a'], DN_SKY = ['#bfe2fb','#dff1fd','#9fcdf0','#3f86c2'];
+const DN_GOLD = ['#ffd98a','#ffe9b8','#f2c063','#a8781e'];   // 三角柱・円柱に しきつめる 立方体
+function dnCube(pr, x, y, z, cl){
+  const P=(a,b,c)=>pr(v3(a,b,c)), st={ stroke:cl[3], lw:1.2 };
+  drawPoly([P(x,y,z),P(x+1,y,z),P(x+1,y+1,z),P(x,y+1,z)], Object.assign({ fill:cl[0] }, st));
+  drawPoly([P(x,y+1,z),P(x+1,y+1,z),P(x+1,y+1,z+1),P(x,y+1,z+1)], Object.assign({ fill:cl[1] }, st));
+  drawPoly([P(x+1,y,z),P(x+1,y,z+1),P(x+1,y+1,z+1),P(x+1,y+1,z)], Object.assign({ fill:cl[2] }, st));
+}
+/* 直方体（たて a・よこ w・おく d・高さ h）に 立方体を n こ つめて かく（前の 列 → おく → 上の 段 の じゅん） */
+function dnCubes(pr, x0, w, d, h, n, cl){
+  for(let z=d-1;z>=0;z--) for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(y*w*d + z*w + x < n) dnCube(pr, x0+x, y, z, cl);
+  }
+}
+/* 見える 辺を もう一度 上から かく（立方体の 上に 外わくを 見せる） */
+function dnEdgesTop(S, pr, col){ S.edges.forEach(e=>{ if(e.vis) drawLine(pr(e.a), pr(e.b), { color:col.line, lw:3 }); }); }
+/* 赤い ✖（ぽんと 出る） */
+function dnCross(p, r, k){
+  if(k<=0) return;
+  const s=r*(k<1 ? 0.6+0.6*Math.sin(k*Math.PI*0.5)*1.1 : 1);
+  ctx.save(); ctx.lineCap='round'; ctx.lineWidth=Math.max(6, r*0.32); ctx.strokeStyle='#e8322f';
+  ctx.beginPath(); ctx.moveTo(p.x-s,p.y-s); ctx.lineTo(p.x+s,p.y+s); ctx.moveTo(p.x+s,p.y-s); ctx.lineTo(p.x-s,p.y+s);
+  ctx.stroke(); ctx.restore();
+}
+/* 高さを 赤く：辺を 1本ずつ じゅんに → さいごは 中の 線（どこで はかっても 同じ） */
+function dnHeights(t, t0, hEdges, inside, pr, txt){
+  if(t < t0) return;
+  const n=hEdges.length, k=Math.floor((t-t0)/0.9) % n;                 // 辺だけを 順番に（中の 線は 出さない）
+  const a=pr(hEdges[k].a), b=pr(hEdges[k].b);
+  drawLine(a, b, { color:H_BOLD, lw:7 });                               // 見えない 辺も 実線の 赤
+  // 「高さ」の 文字（線の 右がわ）
+  const m={ x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+  const L=Math.hypot(b.x-a.x,b.y-a.y)||1;
+  let nx=-(b.y-a.y)/L, ny=(b.x-a.x)/L; if(nx<0){ nx=-nx; ny=-ny; }
+  drawText(m.x+nx*labSize()*1.6, m.y+ny*labSize()*1.6, txt||'高さ', { size:labSize(), color:H_BOLD });
+}
+/* 下の 底面が 上の 底面まで 平行に 上がって もどる（9・10まいめ）。
+   上に ついたら 上の 底面に 色、もどったら 下の 底面にも 色。{ top, bot, ta, ba }（ta・ba＝「底面」の 文字の こさ） */
+const DN_LIFT = { hold:0.5, t0:0.4, up:1.1, stay:0.3, down:1.1 };   // hold＝動き出す 前に とどまる 秒
+function dnBaseLift(t, poly, h, pr){
+  const L=DN_LIFT, ts=L.t0+L.hold, t1=ts+L.up, t2=t1+L.stay, t3=t2+L.down;
+  let y=null;
+  if(t>=L.t0 && t<ts) y=0;
+  else if(t>=ts && t<t1) y=h*dnEase((t-ts)/L.up);
+  else if(t>=t1 && t<t2) y=h;
+  else if(t>=t2 && t<t3) y=h*(1-dnEase((t-t2)/L.down));
+  if(y!==null && pr) drawPoly(poly.map(q=>pr(v3(q.x, y, q.y))), { fill:'rgba(255,159,67,.55)', stroke:'#e8862a', lw:3 });
+  return { top:t>=t1, bot:t>=t3, ta:dnIn(t, t1, 0.4), ba:dnIn(t, t3, 0.4), end:t3 };
+}
+/* 手前の 底面が おくの 底面まで 平行に 動いて もどる（11・12まいめ）。pts＝手前の 底面（3D）、A＝おくまでの ずれ */
+function dnCapSlide(t, t0, pts, A, pr){
+  const L=DN_LIFT, ts=t0+L.hold, t1=ts+L.up, t2=t1+L.stay, t3=t2+L.down;
+  let k=null;
+  if(t>=t0 && t<ts) k=0;
+  else if(t>=ts && t<t1) k=dnEase((t-ts)/L.up);
+  else if(t>=t1 && t<t2) k=1;
+  else if(t>=t2 && t<t3) k=1-dnEase((t-t2)/L.down);
+  if(k!==null && pr) drawPoly(pts.map(q=>pr(v3(q.x+A.x*k, q.y+A.y*k, q.z+A.z*k))), { fill:'rgba(255,159,67,.55)', stroke:'#e8862a', lw:3 });
+  return { back:t>=t1, front:t>=t3, ba:dnIn(t, t1, 0.4), fa:dnIn(t, t3, 0.4), end:t3 };
+}
+/* 見出しの 下から 図の わく（左右は わりあい） */
+function dnRg(x0, x1, y1){ const r=region(x0, 0, x1, y1===undefined ? 0.97 : y1); r.y0=promptBand(1)+promptFs()*1.35*(dnHs-1); return r; }
+/* 見出し（drawPrompt と 同じ かき方。k＝文字の 大きさの 倍率） */
+let dnHs=1;
+function dnHead(txt, col, k){
+  if(k===1){ drawPrompt([txt], col); return; }
+  let fs=promptFs()*k; const fontOf=f=>'900 '+f+'px "Yusei Magic",sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=fontOf(fs);
+  const w=ctx.measureText(txt).width; if(w > W*0.90){ fs=Math.max(12, fs*W*0.90/w); ctx.font=fontOf(fs); }
+  const y=Math.max(8, H*0.025) + fs*1.35*0.5;
+  ctx.lineWidth=6; ctx.lineJoin='round'; ctx.strokeStyle='#fff'; ctx.strokeText(txt, W/2, y);
+  ctx.fillStyle=col; ctx.fillText(txt, W/2, y);
+}
+/* 面の となりに「底面」などの 名前 */
+function dnFaceName(pts, txt, color, dx){
+  const c=center(pts), mx=Math.max(...pts.map(p=>p.x));
+  drawLine({ x:mx+4, y:c.y }, { x:mx+(dx||22), y:c.y }, { color:color, lw:2 });
+  drawText(mx+(dx||22)+4, c.y, txt, { size:labSize(), color:color, align:'left' });
+}
+
+/* 「下の 面は 側面」の ことば（図の 左下） */
+function dnSideNote(t){
+  if(t<2.9) return;
+  ctx.globalAlpha=dnIn(t, 2.9);
+  drawText(W*0.03, H-labSize()*0.9, '下の 面は 側面（底面では ない）', { size:labSize()*0.9, color:'#b4561a', align:'left' });
+  ctx.globalAlpha=1;
+}
+
+/* ---- スライドの 中身 ---- */
+const DN_A = [{x:0,y:0},{x:4,y:0},{x:4,y:5},{x:0,y:5}];        // ㋐の 四角柱の 底面（よこ4・おく5）、高さ6
+function dnPrismA(rg, o){ return drawPrism(makePrism(DN_A,'tate',6), rg, o); }
+function dnLabA(G){ labE(G, DN_A[0], DN_A[1], 0, '4cm'); labE(G, DN_A[0], DN_A[3], 1, '5cm'); labH(G, DN_A[0], '6cm'); }
+/* 5×4×6＝120 の 式（名札つき）。k＝0〜1 で 左から じゅんに 出す */
+/* labLine と 同じ 計算で、長さの 文字の 場所だけ もとめる（数字を とばす 出発点） */
+function dnLabPos(a, b, txt, away){
+  const mx=(a.x+b.x)/2, my=(a.y+b.y)/2, L=Math.hypot(b.x-a.x, b.y-a.y)||1;
+  let nx=-(b.y-a.y)/L, ny=(b.x-a.x)/L;
+  if(away && (nx*(mx-away.x) + ny*(my-away.y)) < 0){ nx=-nx; ny=-ny; }
+  const bh=Math.max(6, Math.min(15, L*0.10)), fs=labSize();
+  ctx.font=dnFont(fs);
+  const w=ctx.measureText(txt).width, wn=ctx.measureText(txt.replace('cm','')).width;
+  const d=bh + 5 + Math.abs(nx)*w/2 + Math.abs(ny)*fs*0.6;
+  return { x:mx+nx*d - w/2 + wn/2, y:my+ny*d };                      // 「5cm」の「5」の 場所
+}
+/* labLine と 同じ かき方で、文字だけ 大きく（k 倍） */
+function dnLabBig(a, b, txt, away, k){
+  const mx=(a.x+b.x)/2, my=(a.y+b.y)/2, L=Math.hypot(b.x-a.x, b.y-a.y)||1;
+  let nx=-(b.y-a.y)/L, ny=(b.x-a.x)/L;
+  if(away && (nx*(mx-away.x) + ny*(my-away.y)) < 0){ nx=-nx; ny=-ny; }
+  const bh=Math.max(6, Math.min(15, L*0.10));
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(mx+nx*bh*2, my+ny*bh*2, b.x, b.y);
+  ctx.setLineDash([5,4]); ctx.lineWidth=1.8; ctx.strokeStyle=C.inkSoft; ctx.lineCap='round'; ctx.stroke(); ctx.restore();
+  const fs=labSize()*k;
+  ctx.font=dnFont(fs);
+  const w=ctx.measureText(txt).width, d=bh + 5 + Math.abs(nx)*w/2 + Math.abs(ny)*fs*0.6;
+  drawText(mx+nx*d, my+ny*d, txt, { size:fs, color:C.ink });
+}
+/* ㋐の 5cm・4cm・6cm の 数字の 場所（縦・横・高さ の じゅん） */
+function dnLabNumA(G){
+  const S=G.S, A=DN_A, cq=center(S.poly);
+  return [ dnLabPos(G.pr(S.at(A[0],1)), G.pr(S.at(A[3],1)), '5cm', G.pr(S.at(cq,1))),
+           dnLabPos(G.pr(S.at(A[0],0)), G.pr(S.at(A[1],0)), '4cm', G.pr(S.at(cq,0))),
+           dnLabPos(G.pr(S.at(A[0],0)), G.pr(S.at(A[0],1)), '6cm', G.c) ];
+}
+/* 5×4×6＝120 の 式（名札つき）。
+   t＝秒（null なら ぜんぶ 出た すがた）、from＝5・4・6 が とんでくる 出発点（dnLabNumA） */
+const DN_FLY = [1.0, 2.2, 3.4], DN_FLY_D = 0.9;
+function dnFormulaA(cx, y, fs, t, from){
+  const all = (t===null || t===undefined);
+  const tg = all ? 1 : dnIn(t, 0.3, 0.5);
+  const fly = i => all ? 1 : dnEase(dnIn(t, DN_FLY[i], DN_FLY_D));
+  const eq  = all ? 1 : dnIn(t, DN_FLY[2]+DN_FLY_D+0.3, 0.5);
+  const toks=[{t:'5',a:0},{t:'×',a:tg},{t:'4',a:0},{t:'×',a:tg},{t:'6',a:0},
+              {t:'＝',a:eq},{t:'120',a:eq},{t:'(cm³)',s:0.55,a:eq}];
+  const pos=dnRow(cx, y, toks, fs, 0.5);
+  ctx.globalAlpha=tg;
+  dnTag(pos[0].x, y-fs*1.62, '縦', 'tate', fs*0.78, 1);
+  dnTag(pos[2].x, y-fs*1.62, '横', 'yoko', fs*0.78, 1);
+  dnTag(pos[4].x, y-fs*1.62, '高さ', 'taka', fs*0.78, 1);
+  dnTag(pos[6].x, y-fs*1.62, '体積', 'tai', fs*0.78, 1);
+  ctx.globalAlpha=1;
+  // 5・4・6（図の 長さの ところから とんでくる）
+  ['5','4','6'].forEach((d,i)=>{
+    const k=fly(i);
+    if(!all && t < DN_FLY[i]) return;
+    const to=pos[i*2], fr=(from && !all) ? from[i] : { x:to.x, y:y };
+    const x=fr.x+(to.x-fr.x)*k, yy=fr.y+(y-fr.y)*k;
+    const sz=labSize()+(fs-labSize())*k;
+    drawText(x, yy, d, { size:sz, color: k<1 ? C.coral : C.ink });
+  });
+  return pos;
+}
+
+const DN_SLIDES = [
+  /* 1 ---- 5年：直方体・立方体の 体積の 公式 ---- */
+  { sec:0, hc:DN_G5, head:'5年生で 学んだ こと',
+    prompt:'直方体の 体積 ＝ たて × 横 × 高さ<br>立方体の 体積 ＝ 1辺 × 1辺 × 1辺',
+    guide:'5年生では、直方体や 立方体の 体積を 公式で 求めたね。',
+    draw(t){
+      const nar = W < 560;                                             // せまい 画面は 公式を 図の 下に
+      const LK=1.45, ls=labSize()*LK;                                  // 長さの 文字は 1.45倍
+      const yt=promptBand(1)+ls*1.5, yb=H-ls*1.5;                       // 上と 下は 長さの 文字の ぶん あける
+      // 公式（右）：文字を 大きく して、右に よせる
+      const F1='＝ たて × 横 × 高さ', F2='＝ 1辺 × 1辺 × 1辺';
+      let fs=Math.max(15, Math.min(W*0.046, H*0.125));
+      const fw=k=>{ ctx.font=dnFont(k); return Math.max(ctx.measureText(F1).width, ctx.measureText(F2).width, ctx.measureText('直方体の 体積').width) + k*0.6; };
+      if(fw(fs) > W*0.34) fs *= W*0.34/fw(fs);
+      const fx0 = W - ls*0.8 - fw(fs);
+      // 図（左）：大きく して、左に よせる。直方体と 立方体の 間を あける
+      const S1=makePrism([{x:0,y:0},{x:5,y:0},{x:5,y:4},{x:0,y:4}],'tate',3);
+      const S2=makePrism([{x:11.5,y:0},{x:15.5,y:0},{x:15.5,y:4},{x:11.5,y:4}],'tate',4);
+      const ex1=S2.B.concat(S2.T), ex2=S1.B.concat(S1.T), pd=0;
+      const rg = nar ? { x0:ls*3, y0:yt, x1:W-ls*2, y1:H*0.62-ls*1.5 } : { x0:ls*2.8, y0:yt-ls*0.3, x1:fx0-ls*2.0, y1:yb+ls*0.3 };
+      if(!nar){                                                        // 高さで 大きさが きまる ときは、図を 左に つめる
+        const op=ex2.concat(ex1).map(obl);
+        const ox=Math.max(...op.map(p=>p.x))-Math.min(...op.map(p=>p.x)), oy=Math.max(...op.map(p=>p.y))-Math.min(...op.map(p=>p.y));
+        const s=Math.min((rg.x1-rg.x0)/ox, (rg.y1-rg.y0)/oy);
+        rg.x1 = rg.x0 + ox*s;
+      }
+      const G1=drawPrism(S1, rg, { col:COL.pink,  capHi:false, extra:ex1, pad:pd });
+      const G2=drawPrism(S2, rg, { col:COL.blue, capHi:false, extra:ex2, pad:pd });
+      const lab=(G,q1,q2,k,txt)=>{ const S=G.S, cq=center(S.poly); dnLabBig(G.pr(S.at(q1,k)), G.pr(S.at(q2,k)), txt, G.pr(S.at(cq,k)), LK); };
+      const labHt=(G,q,txt)=>dnLabBig(G.pr(G.S.at(q,0)), G.pr(G.S.at(q,1)), txt, G.c, LK);
+      lab(G1, {x:0,y:0}, {x:5,y:0}, 0, '5cm'); lab(G1, {x:0,y:0}, {x:0,y:4}, 1, '4cm'); labHt(G1, {x:0,y:0}, '3cm');
+      lab(G2, {x:11.5,y:0}, {x:15.5,y:0}, 0, '4cm'); lab(G2, {x:11.5,y:0}, {x:11.5,y:4}, 1, '4cm'); labHt(G2, {x:11.5,y:0}, '4cm');
+      if(nar){
+        const f2=Math.max(13, Math.min(W*0.048, H*0.05));
+        ctx.globalAlpha=dnIn(t,0.5);
+        drawText(W/2, H*0.68, '直方体の 体積', { size:f2, color:COL.pink.line });
+        drawText(W/2, H*0.68+f2*1.35, '＝ たて × 横 × 高さ', { size:f2, color:C.ink });
+        ctx.globalAlpha=dnIn(t,1.2);
+        drawText(W/2, H*0.84, '立方体の 体積', { size:f2, color:COL.blue.line });
+        drawText(W/2, H*0.84+f2*1.35, '＝ 1辺 × 1辺 × 1辺', { size:f2, color:C.ink });
+        ctx.globalAlpha=1;
+        return;
+      }
+      const x0=fx0, y0=promptBand(1), hh=H-y0;
+      ctx.globalAlpha=dnIn(t,0.5);
+      drawText(x0, y0+hh*0.22, '直方体の 体積', { size:fs, color:COL.pink.line, align:'left' });
+      drawText(x0+fs*0.6, y0+hh*0.22+fs*1.5, '＝ たて × 横 × 高さ', { size:fs, color:C.ink, align:'left' });
+      ctx.globalAlpha=dnIn(t,1.2);
+      drawText(x0, y0+hh*0.60, '立方体の 体積', { size:fs, color:COL.blue.line, align:'left' });
+      drawText(x0+fs*0.6, y0+hh*0.60+fs*1.5, '＝ 1辺 × 1辺 × 1辺', { size:fs, color:C.ink, align:'left' });
+      ctx.globalAlpha=1;
+    } },
+
+  /* 2 ---- ㋐の 四角柱を 直方体の 公式で ---- */
+  { sec:0, hc:DN_G5, head:'㋐の 四角柱の 体積の 求め方',
+    prompt:'㋐の 四角柱の 体積を、直方体の 体積の 公式を つかって 求めよう。',
+    guide:'縦 × 横 × 高さ ＝ 5 × 4 × 6 ＝ 120 で、120cm³ だね。',
+    draw(t){
+      const G=dnPrismA(dnRg(0.60, 0.98), { col:DN_TAN, capHi:false });
+      dnLabA(G);
+      drawText(G.pr(v3(0,6,0)).x - labSize()*2.6, G.pr(v3(0,6,0)).y, '㋐', { size:labSize()*1.2, color:C.ink });
+      const fs=Math.max(18, Math.min(W*0.050, H*0.14));
+      dnFormulaA(W*0.29, H*0.44, fs, t, dnLabNumA(G));       // 3まいめと 同じ 場所
+    } },
+
+  /* 3 ---- 1cm³ の 立方体が 120こ ---- */
+  { sec:0, hc:DN_G5, head:'㋐の 四角柱の 体積の 求め方',
+    prompt:'1cm³ の 立方体が<br>4 × 5 × 6 ＝ 120（こ）',
+    guide:'1cm³ の 立方体を ならべよう。1段めは 4 × 5 ＝ 20こ。それが 6段で 120こ だね。',
+    draw(t){
+      const rg=dnRg(0.60, 0.98), S=makePrism(DN_A,'tate',6);
+      const G=drawPrism(S, rg, { col:DN_TAN, capHi:false });
+      const T0=0.6, ONE=0.4, DAN=1.1, T1=T0+19*ONE;                  // 1こ 0.4秒ごと → 20こめの あと 1段 1.1秒ごと
+      let n=0;
+      if(t>=T0) n = t<T1 ? Math.floor((t-T0)/ONE)+1 : Math.min(120, 20+20*Math.floor((t-T1)/DAN));
+      dnCubes(G.pr, 0, 4, 5, 6, n, DN_PINK);
+      dnEdgesTop(S, G.pr, DN_TAN);
+      dnLabA(G);
+      const fs=Math.max(18, Math.min(W*0.050, H*0.14));
+      dnFormulaA(W*0.29, H*0.44, fs, null);
+      drawText(W*0.29, H*0.66, '1cm³ の 立方体が', { size:fs*0.55, color:C.inkSoft });
+      drawText(W*0.29, H*0.66+fs*0.95, n+' こ', { size:fs*0.95, color:C.coral });
+    } },
+
+  /* 4 ---- 高さ1cmの 四角柱が 6段 ---- */
+  { sec:1, hc:DN_G6, head:'6年生では…',
+    prompt:'この 四角柱は、高さ 1cm の 四角柱が 6段 かさなった ものと みる ことが できます。',
+    guide:'1段ずつ つみあげて みよう。高さ 6cm なので 6段 だね。',
+    draw(t){
+      const X0=9, S=makePrism(DN_A,'tate',6);
+      const ex=[v3(X0,0,0), v3(X0+4,0,5), v3(X0+4,6,5)];
+      const rg=dnRg(0.06, 0.94);
+      const G=drawPrism(S, rg, { col:DN_FAINT, capHi:false, extra:ex });
+      for(let k=1;k<6;k++){
+        drawLine(G.pr(v3(0,k,0)), G.pr(v3(4,k,0)), { color:DN_FAINT.line, lw:1.5, dash:[4,4] });
+        drawLine(G.pr(v3(4,k,0)), G.pr(v3(4,k,5)), { color:DN_FAINT.line, lw:1.5, dash:[4,4] });
+      }
+      const slab={ side:'rgba(250,214,150,.93)', cap:'rgba(240,196,120,.95)', line:'#8a6420' };
+      for(let i=0;i<6;i++){
+        const p=dnEase(dnIn(t, 0.4+i*0.75, 0.65));
+        if(t < 0.4+i*0.75) break;
+        const dx=X0*(1-p);
+        const L=makePrism(DN_A.map(q=>({x:q.x+dx, y:q.y})),'tate',1);
+        L.B.forEach(q=>q.y+=i); L.T.forEach(q=>q.y+=i);
+        dnDraw(L, G.pr, { col:slab, noHidden:true });
+        if(p>=1) drawText(G.pr(v3(2,i+0.5,0)).x, G.pr(v3(2,i+0.5,0)).y, String(i+1), { size:Math.min(labSize()*1.2, G.s*0.8), color:C.ink });
+      }
+      labE(G, DN_A[0], DN_A[1], 0, '4cm'); labE(G, DN_A[0], DN_A[3], 1, '5cm'); labH(G, DN_A[0], '6cm');
+      if(t > 0.4+0.65) labLine(G.pr(v3(4,0,5)), G.pr(v3(4,1,5)), '1cm', G.c, C.coral);
+    } },
+
+  /* 5 ---- 1段ぶんの 体積 と 底面積 ---- */
+  { sec:1, hc:DN_G6, head:'1段ぶんの 体積は？',
+    prompt:'1段ぶんの 体積 20cm³ と<br>底面の 面積 20cm² は 同じ 数',
+    guide:'1段ぶんの 体積は 5 × 4 × 1 ＝ 20 で 20cm³。数は 底面の 面積（底面積）20cm² と 同じだね。',
+    draw(t){
+      // 右：6段の 四角柱
+      const S=makePrism(DN_A,'tate',6), G=drawPrism(S, dnRg(0.62, 0.97), { col:DN_TAN, capHi:false });
+      for(let k=1;k<6;k++){
+        drawLine(G.pr(v3(0,k,0)), G.pr(v3(4,k,0)), { color:DN_TAN.line, lw:2 });
+        drawLine(G.pr(v3(4,k,0)), G.pr(v3(4,k,5)), { color:DN_TAN.line, lw:2 });
+      }
+      for(let i=0;i<6;i++){ const p=G.pr(v3(2,i+0.5,0)); drawText(p.x, p.y, String(i+1), { size:Math.min(labSize(), G.s*0.75), color:C.ink }); }
+      labH(G, DN_A[0], '6cm');
+      // 左：1段ぶん。上の 面が もちあがる
+      const L=makePrism(DN_A,'tate',1), up=3.3;
+      const G1=drawPrism(L, dnRg(0.03, 0.58, 0.80), { col:DN_TAN, capHi:false, extra:L.T.map(q=>v3(q.x,q.y+up,q.z)) });
+      labE(G1, DN_A[0], DN_A[1], 0, '4cm'); labE(G1, DN_A[1], DN_A[2], 0, '5cm');
+      labLine(G1.pr(v3(0,0,0)), G1.pr(v3(0,1,0)), '1cm', G1.c, C.coral);
+      const lift=up*dnEase(dnIn(t, 0.8, 1.1));
+      if(t>=0.3){                                                      // 0.5秒 とどまってから 持ち上がる
+        const top=L.T.map(q=>G1.pr(v3(q.x, q.y+lift, q.z)));
+        drawPoly(top, { fill:DN_GREEN, stroke:DN_TAN.line, lw:3 });
+        const fs=labSize()*1.15, c=center(top), mxx=Math.max(...top.map(p=>p.x));
+        ctx.globalAlpha=dnIn(t, 2.1); drawText(c.x, Math.min(...top.map(p=>p.y))-fs*0.9, '20cm²', { size:fs, color:'#e8322f' });
+        if(lift>=up){ const P=(x,z)=>G1.pr(v3(x, 1+up, z)); labLine(P(0,0), P(4,0), '4cm', c); labLine(P(0,0), P(0,5), '5cm', c); }   // 底面積の 面にも 縦・横の 長さ
+        ctx.globalAlpha=dnIn(t, 3.4); dnFaceName(top, '底面積', '#2a7fc8', 26);
+        ctx.globalAlpha=1;
+      }
+      ctx.globalAlpha=dnIn(t, 2.7);
+      const fb=[G1.pr(v3(0,0,0)), G1.pr(v3(4,0,0))];
+      drawText((fb[0].x+fb[1].x)/2, fb[0].y+labSize()*2.5, '1段ぶんの 体積 20cm³', { size:labSize()*1.1, color:'#e8322f' });
+      ctx.globalAlpha=1;
+    } },
+
+  /* 6 ---- 縦×横×高さ → 底面積×高さ ---- */
+  { sec:1, hc:DN_G6, head:'公式を 見なおそう',
+    prompt:'角柱の 体積 ＝ 底面積 × 高さ',
+    guide:'縦 × 横 は 底面積。だから 体積 ＝ 底面積 × 高さ と 考える ことが できるね。',
+    draw(t){
+      const fs=Math.max(16, Math.min(W*0.072, H*0.12)), cx=W*0.56, y1=Math.max(H*0.36, promptBand(1)+fs*2.15), y2=y1+fs*2.6;   // 文字を 大きく
+      ctx.font=dnFont(fs*0.62);
+      const lx=W*0.04;
+      drawText(lx, y1-fs*1.25, '〔直方体〕', { size:fs*0.62, color:C.ink, align:'left' });
+      const pos=dnRow(cx, y1, [{t:'5'},{t:'×'},{t:'4'},{t:'×'},{t:'6'},{t:'＝'},{t:'120'}], fs);
+      dnTag(pos[0].x, y1-fs*1.25, '縦', 'tate', fs*0.6, 1);
+      dnTag(pos[2].x, y1-fs*1.25, '横', 'yoko', fs*0.6, 1);
+      dnTag(pos[4].x, y1-fs*1.25, '高さ', 'taka', fs*0.6, 1);
+      dnTag(pos[6].x, y1-fs*1.25, '体積', 'tai', fs*0.6, 1);
+      // 5×4 を かっこで まとめて「底面積」
+      const k=dnIn(t, 1.0, 0.6);
+      if(k>0){
+        ctx.globalAlpha=k;
+        const xa=pos[0].x-pos[0].w/2, xb=pos[2].x+pos[2].w/2, yb=y1+fs*0.62;
+        drawPoly([{x:xa,y:yb},{x:xa,y:yb+fs*0.25},{x:xb,y:yb+fs*0.25},{x:xb,y:yb}], { stroke:'#5a46a0', lw:2.5, open:true });
+        dnTag((xa+xb)/2, y2-fs*0.35, '底面積', 'tei', fs*0.6, -1);
+        ctx.globalAlpha=dnIn(t, 1.8, 0.6);
+        dnTag(pos[4].x, y2-fs*0.35, '高さ', 'taka', fs*0.6, -1);
+        dnTag(pos[6].x, y2-fs*0.35, '体積', 'tai', fs*0.6, -1);
+        drawText(lx, y2-fs*0.35, '〔四角柱〕', { size:fs*0.62, color:C.ink, align:'left' });
+        ctx.globalAlpha=1;
+      }
+      // 5年生・6年生 の わく
+      const b=dnIn(t, 2.8, 0.6);
+      if(b>0){
+        const xL=lx-8, xR=pos[6].x+pos[6].w/2+fs*0.5;
+        ctx.globalAlpha=b;
+        dnRR(xL, y1-fs*2.0, xR-xL, fs*2.75, 14); ctx.lineWidth=3; ctx.strokeStyle='#e8322f'; ctx.stroke();
+        drawText(xR+6, y1-fs*1.7, '5年生', { size:fs*0.5, color:DN_G5, align:'left' });
+        ctx.globalAlpha=dnIn(t, 3.4, 0.6);
+        dnRR(xL, y1+fs*0.95, xR-xL, fs*2.3, 14); ctx.lineWidth=3; ctx.strokeStyle='#e8322f'; ctx.stroke();
+        drawText(xR+6, y2+fs*0.2, '6年生', { size:fs*0.5, color:DN_G6, align:'left' });
+        ctx.globalAlpha=1;
+      }
+      ctx.globalAlpha=dnIn(t, 4.3, 0.7);
+      drawText(W/2, Math.min(H*0.9, y2+fs*1.9), '角柱の 体積 ＝ 底面積 × 高さ', { size:fs*0.8, color:C.coral });
+      ctx.globalAlpha=1;
+    } },
+
+  /* 7 ---- 三角柱・円柱は 立方体を ならべられない ---- */
+  { sec:1, hc:DN_G6, hs:1.3, head:'1cm³ の 立方体を ならべると…',
+    prompt:'三角柱や 円柱は、1cm³ の 立方体を すきまなく ならべる ことが できない…',
+    guide:'直方体や 立方体は 1cm³ の 立方体が きちんと ならぶけれど、三角柱や 円柱は どうかな？',
+    draw(t){
+      const rgL=dnRg(0.02, 0.42, 0.84);
+      const S1=makePrism([{x:0,y:0},{x:5,y:0},{x:5,y:4},{x:0,y:4}],'tate',3);
+      const S2=makePrism([{x:7,y:0},{x:11,y:0},{x:11,y:4},{x:7,y:4}],'tate',4);
+      const G1=drawPrism(S1, rgL, { col:COL.pink, capHi:false, extra:S2.B.concat(S2.T) });
+      dnCubes(G1.pr, 0, 5, 4, 3, 60, DN_PINK); dnEdgesTop(S1, G1.pr, COL.pink);
+      const G2=drawPrism(S2, rgL, { col:COL.blue, capHi:false, extra:S1.B.concat(S1.T) });
+      dnCubes(G2.pr, 7, 4, 4, 4, 64, DN_SKY); dnEdgesTop(S2, G2.pr, COL.blue);
+      // 三角柱と 円柱の 1段めに 1cm³ の 立方体を しきつめて みる → すきま（赤）が のこる
+      const TRI=[{x:0,y:0},{x:4,y:0},{x:4,y:5}], S3=makePrism(TRI,'tate',4);
+      const G3=drawPrism(S3, dnRg(0.45, 0.70, 0.84), { col:DN_TAN, capHi:false });
+      const c4=drawCyl(dnRg(0.72, 0.98, 0.84), 3, 3, { k:0.5, col:{ side:DN_TAN.side, cap:DN_TAN.cap, line:DN_TAN.line }, capFill:DN_TAN.side });
+      const prC=v=>({ x:c4.cb.x+v.x*c4.s, y:c4.cb.y-v.y*c4.s-v.z*0.5*c4.s });   // 円柱の 見え方（だ円の 比 0.5）
+      const tFill=1.0+Math.max(4*0.35, 16*0.14);                        // しきつめ おわり（三角柱 6こ・円柱 16こ）
+      const gapA=dnIn(t, tFill+0.2, 0.5), RED='rgba(232,50,47,'+(0.45*gapA).toFixed(3)+')';
+      // 1段めの 上の 面（すきまは 赤く 見える）
+      drawPoly(TRI.map(q=>G3.pr(v3(q.x,1,q.y))), { fill:RED, stroke:'rgba(232,50,47,'+(0.8*gapA).toFixed(3)+')', lw:2, dash:[6,5] });
+      ctx.beginPath(); const e1=prC(v3(0,1,0)); ctx.ellipse(e1.x, e1.y, 3*c4.s, 1.5*c4.s, 0, 0, Math.PI*2);
+      ctx.fillStyle=RED; ctx.fill(); ctx.setLineDash([6,5]); ctx.lineWidth=2; ctx.strokeStyle='rgba(232,50,47,'+(0.8*gapA).toFixed(3)+')'; ctx.stroke(); ctx.setLineDash([]);
+      // しきつめる 立方体（おくから 手前へ）
+      const triC=[[1,2],[3,2],[2,1],[3,1],[1,0],[2,0],[3,0]].filter(([i,j])=>j+1<=1.25*i);
+      const cylC=[]; for(let j=2;j>=-3;j--) for(let i=-3;i<=2;i++){ const a=Math.max(Math.abs(i),Math.abs(i+1)), b=Math.max(Math.abs(j),Math.abs(j+1)); if(a*a+b*b<=9) cylC.push([i,j]); }
+      const nT=Math.floor((t-1.0)/0.35)+1, nC=Math.floor((t-1.0)/0.14)+1;
+      // 手前から 1こずつ おく（かくときは おくから 手前の じゅん）
+      const ordT=triC.slice().reverse(), ordC=cylC.slice().reverse();
+      triC.forEach(c=>{ if(ordT.indexOf(c)<nT) dnCube(G3.pr, c[0], 0, c[1], DN_GOLD); });
+      cylC.forEach(c=>{ if(ordC.indexOf(c)<nC) dnCube(prC, c[0], 0, c[1], DN_GOLD); });
+      dnEdgesTop(S3, G3.pr, DN_TAN);
+      ctx.lineWidth=3; ctx.strokeStyle=DN_TAN.line; ctx.beginPath();     // 円柱の りんかくを 上から
+      ctx.moveTo(c4.ct.x-c4.rx, c4.ct.y); ctx.lineTo(c4.cb.x-c4.rx, c4.cb.y); ctx.ellipse(c4.cb.x, c4.cb.y, c4.rx, c4.ry, 0, Math.PI, 0, true);
+      ctx.lineTo(c4.ct.x+c4.rx, c4.ct.y); ctx.moveTo(c4.ct.x+c4.rx, c4.ct.y); ctx.ellipse(c4.ct.x, c4.ct.y, c4.rx, c4.ry, 0, 0, Math.PI*2); ctx.stroke();
+      const r=Math.min(W,H)*0.06, tE=1.0+Math.max(triC.length*0.35, cylC.length*0.14)+0.5;
+      dnCross({ x:G3.c.x, y:G3.c.y-r*0.6 }, r, dnIn(t, tE, 0.35)); dnCross({ x:c4.c.x, y:c4.ct.y+r*0.2 }, r, dnIn(t, tE+0.4, 0.35));
+      const fs=Math.max(11, Math.min(W*0.038, H*0.07));                 // 下の 説明を 大きく
+      drawText(W*0.22, H*0.91, 'すきまなく ならぶ', { size:fs, color:C.ink });
+      ctx.globalAlpha=dnIn(t, 4.0); drawText(W*0.71, H*0.91, 'すきま（赤い ところ）が できる…', { size:fs, color:'#e8322f' }); ctx.globalAlpha=1;
+    } },
+
+  /* 8 ---- どれも 底面積 × 高さ ---- */
+  { sec:1, hc:DN_G6, hs:1.3, head:'底面積 × 高さ なら…',
+    prompt:'底面積 × 高さ なら、どんな 角柱や 円柱でも 体積が 求められる！',
+    guide:'底面（みどりの 面）の 面積が わかれば、どの 立体も 底面積 × 高さ で 体積が 求められるね。',
+    draw(t){
+      const g=dnIn(t, 0.4, 0.8);
+      const cap='rgba(110,196,80,'+(0.58*g).toFixed(3)+')';
+      const ys=0.77, rgs=[dnRg(0.01,0.25,ys), dnRg(0.25,0.49,ys), dnRg(0.51,0.75,ys), dnRg(0.76,0.99,ys)];
+      const mk=(col)=>({ side:col.side, cap:cap, line:col.line });
+      const P=[makePrism([{x:0,y:0},{x:5,y:0},{x:5,y:4},{x:0,y:4}],'tate',3), makePrism([{x:0,y:0},{x:4,y:0},{x:4,y:4},{x:0,y:4}],'tate',4), makePrism([{x:0,y:0},{x:4,y:0},{x:4,y:5}],'tate',6)];
+      const Gs=[drawPrism(P[0], rgs[0], { col:mk(COL.pink) }), drawPrism(P[1], rgs[1], { col:mk(COL.blue) }), drawPrism(P[2], rgs[2], { col:mk(DN_TAN) })];
+      const cy=drawCyl(rgs[3], 3, 4, { col:{ side:DN_TAN.side, cap:cap, line:DN_TAN.line }, capFill:cap });
+      const figB=Math.max(...Gs.map((G,i)=>Math.max(...P[i].B.concat(P[i].T).map(q=>G.pr(q).y))), cy.cb.y+cy.ry);   // 図の いちばん 下
+      const fs=Math.max(14, Math.min(W*0.034, H*0.062));                 // 下の 説明を 大きく
+      ['長方形','正方形','三角形','円'].forEach((s,i)=>{
+        ctx.globalAlpha=dnIn(t, 1.0+i*0.4);
+        drawText((rgs[i].x0+rgs[i].x1)/2, (figB+H*0.935)/2, '底面：'+s, { size:fs, color:'#3d8a2c' });
+      });
+      ctx.globalAlpha=dnIn(t, 2.9, 0.6);
+      drawText(W/2, H*0.935, 'どれも  体積 ＝ 底面積 × 高さ', { size:fs*1.2, color:C.coral });
+      ctx.globalAlpha=1;
+    } },
+
+  /* 9 ---- ㋐の 四角柱の 底面と 高さ ---- */
+  { sec:2, head:'㋐の 四角柱の 底面と 高さ',
+    prompt:'㋐の 四角柱の 底面と 高さは どこかな？',
+    guide:'底面は 上と 下の 2つの 面。高さは 2つの 底面の 間の 長さで、どの 辺で はかっても 6cm だよ。',
+    draw(t){
+      const S=makePrism(DN_A,'tate',6);
+      const lf=dnBaseLift(t, [], 0, null);                               // 色を つけるか だけ 先に
+      const G=drawPrism(S, dnRg(0.06, 0.74), { col:DN_BASE, capMask:[lf.bot, lf.top] });
+      dnLabA(G);
+      dnBaseLift(t, DN_A, 6, G.pr);                                      // 下の 底面が 上がって もどる
+      ctx.globalAlpha=lf.ta; dnFaceName(S.T.map(G.pr), '底面', '#3d8a2c', 30);
+      ctx.globalAlpha=lf.ba; dnFaceName(S.B.map(G.pr), '底面', '#3d8a2c', 30);
+      ctx.globalAlpha=1;
+      const cq=center(DN_A);
+      dnHeights(t, lf.end+0.5, S.edges.filter((e,i)=>i%3===2), [S.at(cq,0), S.at(cq,1)], G.pr);
+    } },
+
+  /* 10 ---- ㋑の 三角柱の 底面と 高さ ---- */
+  { sec:2, head:'㋑の 三角柱の 底面と 高さ',
+    prompt:'㋑の 三角柱の 底面と 高さは どこかな？',
+    guide:'向かい合った 2つの 三角形が 底面。高さは 底面と 底面の 間の 長さ（6cm）だね。',
+    draw(t){
+      const TRI=[{x:0,y:0},{x:4,y:0},{x:4,y:5}], S=makePrism(TRI,'tate',6);
+      const lf=dnBaseLift(t, [], 0, null);
+      const G=drawPrism(S, dnRg(0.06, 0.74), { col:DN_BASE, capMask:[lf.bot, lf.top] });
+      labE(G, TRI[0], TRI[1], 0, '4cm'); labE(G, TRI[1], TRI[2], 0, '5cm'); labH(G, TRI[0], '6cm');
+      rightMark(G, TRI[1], {x:-1,y:0}, {x:0,y:1}, 0);
+      const p=G.pr(S.at({x:0,y:5},1));
+      drawText(p.x - labSize()*1.6, p.y, '㋑', { size:labSize()*1.2, color:C.ink });
+      dnBaseLift(t, TRI, 6, G.pr);
+      ctx.globalAlpha=lf.ta; dnFaceName(S.T.map(G.pr), '底面', '#3d8a2c', 30);
+      ctx.globalAlpha=lf.ba; dnFaceName(S.B.map(G.pr), '底面', '#3d8a2c', 30);
+      ctx.globalAlpha=1;
+      const cq=center(TRI);
+      dnHeights(t, lf.end+0.5, S.edges.filter((e,i)=>i%3===2), [S.at(cq,0), S.at(cq,1)], G.pr);
+    } },
+
+  /* 11 ---- ねかせた 三角柱 ---- */
+  { sec:2, head:'ねかせた 三角柱の 底面と 高さ',
+    prompt:'この 三角柱の 底面と 高さは どこかな？<br>下の 面が 底面とは かぎらないよ。',
+    guide:'下の 長方形を 上へ 動かしても、同じ 形の 面は ないね。向かい合った 2つの 三角形（前と おく）が 底面。高さは 5cm だよ。',
+    draw(t){
+      const TP=[{x:0,y:0},{x:8,y:0},{x:0,y:6}], S=makePrism(TP,'yoko',5);
+      const f=prismFit(S, dnRg(0.06, 0.80, 0.88), 46), pr=f.pr;
+      const isBottom=F=>!F.cap && F.pts.every(q=>Math.abs(q.y)<1e-9);
+      const bottomC = t<0.5 ? null : t<2.9 ? DN_GREEN : DN_ORANGE;
+      const cs=dnCapSlide(t, 3.7, [], null, null);                       // 底面に 色を つけるか だけ 先に
+      dnDraw(S, pr, { col:DN_TAN, fill:(i,F)=> F.cap ? ((i===0 ? cs.front : cs.back) ? DN_GREEN : null) : (isBottom(F) ? bottomC : null) });
+      const bottom=S.faces.find(isBottom).pts;
+      // 下の 面を 上へ（同じ 形の 面が あるかな？）
+      const up=6*dnEase(dnIn(t, 1.1, 1.3));
+      if(t>0.6 && t<2.9){
+        drawPoly(bottom.map(q=>pr(v3(q.x, q.y+up, q.z))), { fill:'rgba(110,196,80,.45)', stroke:'#3d8a2c', lw:2.5 });
+      }
+      if(t>2.9 && t<3.6) dnCross(pr(v3(4,6,2.5)), Math.min(W,H)*0.05, dnIn(t, 2.9, 0.3));
+      dnSideNote(t);
+      dnCapSlide(t, 3.7, S.B, v3(0,0,5), pr);                            // 手前の 三角形が おくまで 動いて もどる
+      ctx.globalAlpha=cs.ba; dnFaceName(S.T.map(pr), '底面', '#2e7a20', 30);
+      ctx.globalAlpha=cs.fa; const q=pr(v3(2.3,1.7,0)); drawText(q.x, q.y, '底面', { size:labSize(), color:'#2e7a20' });
+      ctx.globalAlpha=1;
+      const G={ pr:pr, S:S, c:center(S.B.concat(S.T).map(pr)) };
+      labE(G, TP[0], TP[1], 0, '8cm'); labE(G, TP[2], TP[0], 0, '6cm'); labE(G, TP[1], TP[2], 0, '10cm');
+      labLine(pr(v3(8,0,0)), pr(v3(8,0,5)), '5cm', pr(v3(8,3,0)));
+      rightMark(G, TP[0], {x:1,y:0}, {x:0,y:1}, 0);
+      dnHeights(t, cs.end+0.5, S.edges.filter((e,i)=>i%3===2), [S.at({x:8/3,y:2},0), S.at({x:8/3,y:2},1)], pr);
+    } },
+
+  /* 12 ---- L字の 立体 ---- */
+  { sec:2, head:'L字の 立体の 底面と 高さ',
+    prompt:'この 立体の 底面と 高さは どこかな？',
+    guide:'下の 面を 上へ 動かしても 同じ 形の 面は ないね。向かい合った 2つの L字の 面が 底面。高さは 8cm だよ。',
+    draw(t){
+      const LP=[{x:0,y:0},{x:9,y:0},{x:9,y:4},{x:4,y:4},{x:4,y:6},{x:0,y:6}];
+      const S=makePrism(LP,'yoko',8);
+      const rg=dnRg(0.06, 0.80, 0.88), f=prismFit(S, rg, 46), pr=f.pr;
+      const isBottom=F=>!F.cap && F.pts.every(q=>Math.abs(q.y)<1e-9);
+      const bottomC = t<0.5 ? null : t<2.9 ? DN_GREEN : DN_ORANGE;
+      const cs=dnCapSlide(t, 3.7, [], null, null);
+      dnDraw(S, pr, { col:DN_TAN, fill:(i,F)=> F.cap ? ((i===0 ? cs.front : cs.back) ? DN_GREEN : null) : (isBottom(F) ? bottomC : null) });
+      const bottom=S.faces.find(isBottom).pts;
+      const up=6*dnEase(dnIn(t, 1.1, 1.3));
+      if(t>0.6 && t<2.9){
+        drawPoly(bottom.map(q=>pr(v3(q.x, q.y+up, q.z))), { fill:'rgba(110,196,80,.45)', stroke:'#3d8a2c', lw:2.5 });
+      }
+      if(t>2.9 && t<3.6) dnCross(pr(v3(6.5,6,4)), Math.min(W,H)*0.05, dnIn(t, 2.9, 0.3));
+      dnSideNote(t);
+      const G={ pr:pr, S:S, c:center(S.B.concat(S.T).map(pr)) };
+      labE(G, LP[0], LP[1], 0, '9cm', {x:4.5,y:3}); labE(G, LP[5], LP[0], 0, '6cm', {x:4.5,y:3});
+      labE(G, LP[4], LP[5], 0, '4cm', {x:2,y:0}); labE(G, LP[1], LP[2], 0, '4cm', {x:4.5,y:2});
+      labLine(pr(v3(9,0,0)), pr(v3(9,0,8)), '8cm', pr(v3(9,4,0)));
+      dnCapSlide(t, 3.7, S.B, v3(0,0,8), pr);                            // 手前の L字の 面が おくまで 動いて もどる
+      ctx.globalAlpha=cs.ba; dnFaceName(S.T.map(pr), '底面', '#2e7a20', 30);
+      ctx.globalAlpha=cs.fa; const q=pr(v3(6.5,2,0)); drawText(q.x, q.y, '底面', { size:labSize(), color:'#2e7a20' });
+      ctx.globalAlpha=1;
+      dnHeights(t, cs.end+0.5, S.edges.filter((e,i)=>i%3===2), [S.at({x:2,y:2},0), S.at({x:2,y:2},1)], pr);
+    } }
+];
+function dnNavHtml(){
+  const n=DN_SLIDES.length;
+  return '<div class="dn-nav"><button data-dn="-1" id="dnPrev"'+(dnIdx<=0?' disabled':'')+'>◀ もどる</button>'+
+         '<span id="dnNo">'+(dnIdx+1)+' / '+n+'</span>'+
+         '<button data-dn="1" id="dnNext"'+(dnIdx>=n-1?' disabled':'')+'>つぎへ ▶</button></div>';
+}
+function dnGo(d){
+  const k=Math.max(0, Math.min(DN_SLIDES.length-1, dnIdx+d));
+  if(k===dnIdx) return;
+  dnIdx=k; data.t0=Date.now();
+  refresh();
+  const no=document.getElementById('dnNo'); if(no) no.textContent=(dnIdx+1)+' / '+DN_SLIDES.length;
+  const pv=document.getElementById('dnPrev'), nx=document.getElementById('dnNext');
+  if(pv) pv.disabled = dnIdx<=0;
+  if(nx) nx.disabled = dnIdx>=DN_SLIDES.length-1;
+}
+/* キーボードの ← → でも スライドを うごかす（電子黒板・PC） */
+document.addEventListener('keydown', e=>{
+  if(mode!=='dounyu') return;
+  const tg=e.target; if(tg && (tg.tagName==='INPUT' || tg.tagName==='TEXTAREA')) return;
+  if(e.key==='ArrowRight' || e.key==='PageDown'){ e.preventDefault(); dnGo(1); }
+  else if(e.key==='ArrowLeft' || e.key==='PageUp'){ e.preventDefault(); dnGo(-1); }
+});
+
 const MODES = {
+
+  /* ---------- しくみ：導入（スライドで 見せる。問題では ない） ---------- */
+  dounyu: {
+    icon:'🎬', label:'導入',
+    input:'none',
+    steps: DN_SEC,
+    get ctlHtml(){ return dnNavHtml(); },
+    onCtl(btn){ if(btn.dataset.dn) dnGo(+btn.dataset.dn); },
+    setup(){ data.t0=Date.now(); phase='view'; },
+    step(){ return DN_SLIDES[dnIdx].sec; },
+    prompt(){ return DN_SLIDES[dnIdx].prompt; },
+    guide(){ return DN_SLIDES[dnIdx].guide; },
+    draw(){
+      const sl=DN_SLIDES[dnIdx], t=(Date.now()-(data.t0||Date.now()))/1000;
+      dnHs = sl.hs || 1;
+      dnHead(sl.head, sl.hc || C.coral, dnHs);
+      sl.draw(t);
+      dnHs = 1;
+    },
+    redo(){ data.t0=Date.now(); },                                     // 「やりなおす」＝ この スライドの 動きを もう一度
+    onTap(){ if(dnIdx < DN_SLIDES.length-1) dnGo(1); return null; }    // 図を タップ ＝ つぎへ
+  },
 
   /* ---------- しくみ：何段 かさなる？（表 大問1） ---------- */
   dan: {
@@ -2781,7 +3403,8 @@ function resize(){
     cssH = Math.max(180, box.clientHeight - pad);
     const ar = cssH / cssW;
     if(ar > CANVAS_AR_MAX) cssH = Math.round(cssW * CANVAS_AR_MAX);
-    if(ar < CANVAS_AR_MIN) cssW = Math.round(cssH / CANVAS_AR_MIN);
+    const arMin = (mode==='dounyu') ? 0.30 : CANVAS_AR_MIN;            // 導入（スライド）は 横長の 図を ひろく つかう
+    if(ar < arMin) cssW = Math.round(cssH / arMin);
   }
   DPR = Math.min(window.devicePixelRatio||1, 2.5);
   cv.style.width  = cssW+'px';
@@ -3239,6 +3862,7 @@ function setMode(m){
   if(window.Challenge10 && Challenge10.isOn()) Challenge10.reset();   // タブを かえたら 数えなおす
   mode = m; M = MODES[m];
   document.body.classList.toggle('zk-on', M.view==='zukan');   // 面積・体積の 公式（カードの 一覧）の 画面
+  document.body.classList.toggle('dn-on', m==='dounyu');       // 導入（スライド）の 画面
   if(scores[m]===undefined) scores[m]=0;
   applyTabUI(m);
   buildSteps();
